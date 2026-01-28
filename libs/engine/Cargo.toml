@@ -13,3 +13,7 @@ anyhow = "1.0"
 colored = "2.0"
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2.0"
+
+[dev-dependencies]
+mockall = "0.14.0"
+rstest = "0.26.1"

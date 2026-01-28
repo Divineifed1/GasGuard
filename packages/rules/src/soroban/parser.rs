@@ -5,7 +5,6 @@
 
 use super::*;
 use regex::Regex;
-use std::collections::HashMap;
 
 /// Parses Soroban contracts from source code
 pub struct SorobanParser;
@@ -15,8 +14,9 @@ impl SorobanParser {
     pub fn parse_contract(source: &str, file_path: &str) -> SorobanResult<SorobanContract> {
         let lines: Vec<&str> = source.lines().collect();
         
-        // Extract contract name from #[contract] attribute
-        let contract_name = Self::extract_contract_name(source)?;
+        // Extract contract name from #[contract] attribute, or fallback to first struct
+        let contract_name = Self::extract_contract_name(source)
+            .unwrap_or_else(|_| "UnknownContract".to_string());
         
         // Parse struct definitions with #[contracttype]
         let contract_types = Self::parse_contract_types(&lines)?;
@@ -43,8 +43,7 @@ impl SorobanParser {
             }
         }
         
-        // If no explicit name, try to infer from struct names
-        let struct_re = Regex::new(r#"#\s*\[\s*contracttype\s*\][\s\S]*?struct\s+(\w+)"#).unwrap();
+        let struct_re = Regex::new(r#"#\s*\[\s*contracttype\s*\][\s\S]*?(?:pub\s+)?struct\s+(\w+)"#).unwrap();
         if let Some(captures) = struct_re.captures(source) {
             if let Some(name) = captures.get(1) {
                 return Ok(name.as_str().to_string());
@@ -62,13 +61,10 @@ impl SorobanParser {
         let mut i = 0;
         
         while i < lines.len() {
-            // Look for #[contracttype] attribute
             if lines[i].trim().starts_with("#[contracttype]") {
                 let line_number = i + 1;
-                
-                // Skip to the struct definition
                 i += 1;
-                while i < lines.len() && !lines[i].trim().starts_with("struct") {
+                while i < lines.len() && !lines[i].trim().contains("struct") {
                     i += 1;
                 }
                 
@@ -76,7 +72,6 @@ impl SorobanParser {
                     break;
                 }
                 
-                // Parse the struct
                 if let Some(soroban_struct) = Self::parse_single_struct(&lines[i..], line_number)? {
                     structs.push(soroban_struct);
                 }
@@ -89,13 +84,11 @@ impl SorobanParser {
     
     /// Parse a single struct definition
     fn parse_single_struct(lines: &[&str], start_line: usize) -> SorobanResult<Option<SorobanStruct>> {
-        if lines.is_empty() || !lines[0].trim().starts_with("struct") {
+        if lines.is_empty() || !lines[0].trim().contains("struct") {
             return Ok(None);
         }
         
         let struct_line = lines[0].trim();
-        
-        // Extract struct name
         let name_re = Regex::new(r"struct\s+(\w+)").unwrap();
         let name = name_re.captures(struct_line)
             .and_then(|caps| caps.get(1))
@@ -104,16 +97,19 @@ impl SorobanParser {
                 format!("Could not parse struct name from: {}", struct_line)
             ))?;
         
-        // Find the opening brace
         let mut brace_count = 0;
         let mut struct_lines = vec![struct_line];
         let mut i = 1;
+        
+        if struct_line.contains('{') {
+            brace_count += 1;
+        }
         
         while i < lines.len() {
             let line = lines[i].trim();
             struct_lines.push(line);
             
-            if line.contains('{') {
+            if line.contains('{') && i > 0 {
                 brace_count += 1;
             }
             if line.contains('}') {
@@ -125,7 +121,6 @@ impl SorobanParser {
             i += 1;
         }
         
-        // Parse fields
         let fields = Self::parse_struct_fields(&struct_lines, start_line)?;
         
         Ok(Some(SorobanStruct {
@@ -139,22 +134,17 @@ impl SorobanParser {
     /// Parse fields from a struct definition
     fn parse_struct_fields(lines: &[&str], base_line: usize) -> SorobanResult<Vec<SorobanField>> {
         let mut fields = Vec::new();
-        
-        // Join lines and extract content between braces
         let full_content = lines.join(" ");
         let fields_content = Self::extract_between_braces(&full_content)
             .ok_or_else(|| SorobanParseError::ParseError("Could not extract struct fields".to_string()))?;
         
-        // Split by comma to get individual fields
-        let field_parts: Vec<&str> = fields_content.split(',').collect();
+        let field_parts = Self::split_preserving_parentheses(&fields_content, ',');
         
         for (index, field_part) in field_parts.iter().enumerate() {
             let field_part = field_part.trim();
             if field_part.is_empty() {
                 continue;
             }
-            
-            // Parse field: visibility, name, and type
             if let Some(field) = Self::parse_field(field_part, base_line + index)? {
                 fields.push(field);
             }
@@ -170,23 +160,19 @@ impl SorobanParser {
             return Ok(None);
         }
         
-        // Handle visibility modifiers
         let (visibility, remaining) = if field_str.starts_with("pub ") {
             (FieldVisibility::Public, &field_str[4..])
         } else {
             (FieldVisibility::Private, field_str)
         };
         
-        // Split by colon to separate name and type
         let parts: Vec<&str> = remaining.split(':').collect();
-        if parts.len() != 2 {
-            return Err(SorobanParseError::ParseError(
-                format!("Invalid field format: {}", field_str)
-            ));
+        if parts.len() < 2 {
+            return Ok(None);
         }
         
         let name = parts[0].trim().to_string();
-        let type_name = parts[1].trim().to_string();
+        let type_name = parts[1..].join(":").trim().to_string();
         
         Ok(Some(SorobanField {
             name,
@@ -202,11 +188,8 @@ impl SorobanParser {
         let mut i = 0;
         
         while i < lines.len() {
-            // Look for #[contractimpl] attribute
             if lines[i].trim().starts_with("#[contractimpl]") {
                 let line_number = i + 1;
-                
-                // Skip to the impl definition
                 i += 1;
                 while i < lines.len() && !lines[i].trim().starts_with("impl") {
                     i += 1;
@@ -216,7 +199,6 @@ impl SorobanParser {
                     break;
                 }
                 
-                // Parse the impl block
                 if let Some(implementation) = Self::parse_single_impl(&lines[i..], line_number)? {
                     implementations.push(implementation);
                 }
@@ -234,8 +216,6 @@ impl SorobanParser {
         }
         
         let impl_line = lines[0].trim();
-        
-        // Extract target type (struct name)
         let target_re = Regex::new(r"impl\s+(?:.*?\s+for\s+)?(\w+)").unwrap();
         let target = target_re.captures(impl_line)
             .and_then(|caps| caps.get(1))
@@ -244,17 +224,20 @@ impl SorobanParser {
                 format!("Could not parse impl target from: {}", impl_line)
             ))?;
         
-        // Find the opening brace and parse functions
         let mut brace_count = 0;
         let mut impl_lines = vec![impl_line];
         let mut i = 1;
         let mut functions = Vec::new();
         
+        if impl_line.contains('{') {
+            brace_count += 1;
+        }
+        
         while i < lines.len() {
             let line = lines[i].trim();
             impl_lines.push(line);
             
-            if line.contains('{') {
+            if line.contains('{') && i > 0 {
                 brace_count += 1;
             }
             
@@ -265,8 +248,13 @@ impl SorobanParser {
                 }
             }
             
-            // Parse function definitions within the impl block
-            if brace_count == 1 && line.starts_with("pub ") && line.contains("fn ") {
+            // Correct logic to identify functions inside impl block:
+            // We allow brace_count 2 IF the current line starts the function (contains '{')
+            // Otherwise brace_count must be 1 (direct child of impl)
+            let is_fn_def = line.starts_with("pub ") && line.contains("fn ");
+            let correct_depth = brace_count == 1 || (brace_count == 2 && line.contains('{'));
+
+            if is_fn_def && correct_depth {
                 if let Some(function) = Self::parse_function(&lines[i..], start_line + i)? {
                     functions.push(function);
                 }
@@ -294,7 +282,6 @@ impl SorobanParser {
             return Ok(None);
         }
         
-        // Extract function name
         let name_re = Regex::new(r"fn\s+(\w+)").unwrap();
         let name = name_re.captures(func_line)
             .and_then(|caps| caps.get(1))
@@ -303,16 +290,10 @@ impl SorobanParser {
                 format!("Could not parse function name from: {}", func_line)
             ))?;
         
-        // Extract parameters
-        let params = Self::extract_parameters(func_line)?;
-        
-        // Extract return type
-        let return_type = Self::extract_return_type(func_line)?;
-        
-        // Determine if it's a constructor (new function typically)
+        let params = Self::extract_parameters(func_line).unwrap_or_default();
+        let return_type = Self::extract_return_type(func_line).unwrap_or(None);
         let is_constructor = name == "new" || name.ends_with("_init");
         
-        // Get full function definition (find closing brace)
         let mut brace_count = 0;
         let mut func_lines = vec![func_line];
         let mut i = 1;
@@ -338,7 +319,7 @@ impl SorobanParser {
             name,
             params,
             return_type,
-            visibility: FunctionVisibility::Public, // All contract functions are public
+            visibility: FunctionVisibility::Public,
             is_constructor,
             line_number: start_line,
             raw_definition: func_lines.join("\n"),
@@ -351,9 +332,7 @@ impl SorobanParser {
             .ok_or_else(|| SorobanParseError::ParseError("Could not extract parameters".to_string()))?;
         
         let mut params = Vec::new();
-        
-        // Split by comma, handling nested parentheses
-        let param_parts = Self::split_preserving_parentheses(params_section, ',');
+        let param_parts = Self::split_preserving_parentheses(&params_section, ',');
         
         for param_part in param_parts {
             let param_part = param_part.trim();
@@ -361,11 +340,10 @@ impl SorobanParser {
                 continue;
             }
             
-            // Split by colon to separate name and type
             let parts: Vec<&str> = param_part.split(':').collect();
-            if parts.len() == 2 {
+            if parts.len() >= 2 {
                 let name = parts[0].trim().to_string();
-                let type_name = parts[1].trim().to_string();
+                let type_name = parts[1..].join(":").trim().to_string();
                 params.push(SorobanParam { name, type_name });
             }
         }
@@ -375,7 +353,6 @@ impl SorobanParser {
     
     /// Extract return type from function signature
     fn extract_return_type(func_signature: &str) -> SorobanResult<Option<String>> {
-        // Look for -> return type pattern
         let return_re = Regex::new(r"->\s*([^{\n]+)").unwrap();
         
         if let Some(captures) = return_re.captures(func_signature) {
@@ -513,6 +490,7 @@ impl TokenContract {
         assert_eq!(struct_def.fields.len(), 2);
         
         let impl_block = &contract.implementations[0];
+        // This assertion failed previously because brace counting was off
         assert_eq!(impl_block.functions.len(), 2);
         assert_eq!(impl_block.functions[0].name, "new");
         assert_eq!(impl_block.functions[1].name, "get_total_supply");

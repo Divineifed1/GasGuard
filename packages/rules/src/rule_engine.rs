@@ -1,9 +1,10 @@
+//! Rule Engine Core
+//!
+//! Provides the fundamental traits and AST traversal logic for the rules engine.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use syn::{Expr, Item, ItemImpl, ItemStruct, Member, Pat};
-
-// Re-export from soroban module
-pub use crate::soroban::{SorobanRuleEngine, SorobanContract, SorobanParser, SorobanResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleViolation {
@@ -19,6 +20,8 @@ pub struct RuleViolation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ViolationSeverity {
     Error,
+    High,
+    Medium,
     Warning,
     Info,
 }
@@ -100,7 +103,6 @@ fn extract_variables_from_expr(expr: &Expr, used_vars: &mut HashSet<String>) {
         Expr::Path(path) => {
             if let Some(segment) = path.path.segments.last() {
                 let ident = segment.ident.to_string();
-                // Skip common Rust keywords and types
                 if !is_rust_keyword(&ident) {
                     used_vars.insert(ident);
                 }
@@ -111,6 +113,10 @@ fn extract_variables_from_expr(expr: &Expr, used_vars: &mut HashSet<String>) {
             if let Member::Named(ident) = &field.member {
                 used_vars.insert(ident.to_string());
             }
+        }
+        Expr::Assign(assign) => {
+            extract_variables_from_expr(&assign.left, used_vars);
+            extract_variables_from_expr(&assign.right, used_vars);
         }
         Expr::MethodCall(method_call) => {
             extract_variables_from_expr(&method_call.receiver, used_vars);
@@ -211,64 +217,12 @@ fn extract_variables_from_pat(pat: &Pat, used_vars: &mut HashSet<String>) {
 fn is_rust_keyword(ident: &str) -> bool {
     matches!(
         ident,
-        "self"
-            | "Self"
-            | "super"
-            | "crate"
-            | "mod"
-            | "use"
-            | "pub"
-            | "const"
-            | "static"
-            | "let"
-            | "fn"
-            | "struct"
-            | "enum"
-            | "impl"
-            | "trait"
-            | "where"
-            | "for"
-            | "while"
-            | "loop"
-            | "if"
-            | "else"
-            | "match"
-            | "break"
-            | "continue"
-            | "return"
-            | "async"
-            | "await"
-            | "move"
-            | "ref"
-            | "mut"
-            | "unsafe"
-            | "extern"
-            | "type"
-            | "union"
-            | "macro"
-            | "Some"
-            | "None"
-            | "Ok"
-            | "Err"
-            | "Result"
-            | "Option"
-            | "Vec"
-            | "String"
-            | "str"
-            | "bool"
-            | "u8"
-            | "u16"
-            | "u32"
-            | "u64"
-            | "u128"
-            | "i8"
-            | "i16"
-            | "i32"
-            | "i64"
-            | "i128"
-            | "f32"
-            | "f64"
-            | "usize"
-            | "isize"
+        "self" | "Self" | "super" | "crate" | "mod" | "use" | "pub" | "const" | "static" | "let"
+            | "fn" | "struct" | "enum" | "impl" | "trait" | "where" | "for" | "while" | "loop"
+            | "if" | "else" | "match" | "break" | "continue" | "return" | "async" | "await"
+            | "move" | "ref" | "mut" | "unsafe" | "extern" | "type" | "union" | "macro" | "Some"
+            | "None" | "Ok" | "Err" | "Result" | "Option" | "Vec" | "String" | "str" | "bool"
+            | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128"
+            | "f32" | "f64" | "usize" | "isize"
     )
 }

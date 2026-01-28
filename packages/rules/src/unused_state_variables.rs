@@ -42,7 +42,7 @@ impl Rule for UnusedStateVariablesRule {
                                 var_name, struct_name
                             ),
                             severity: ViolationSeverity::Warning,
-                            line_number: 0, // Line number tracking requires proc-macro2 span features
+                            line_number: 0, 
                             column_number: 0,
                             variable_name: var_name.clone(),
                             suggestion: format!(
@@ -99,20 +99,29 @@ impl UnusedStateVariablesRule {
     fn is_soroban_contract(&self, struct_item: &ItemStruct) -> bool {
         // Check for Soroban contract attributes
         for attr in &struct_item.attrs {
-            if let Meta::List(meta_list) = &attr.meta {
-                let path_str = meta_list.path.to_token_stream().to_string();
-                if path_str.contains("contractimpl")
-                    || path_str.contains("contracttype")
-                    || path_str.contains("stellar_contract")
-                {
-                    return true;
+            match &attr.meta {
+                Meta::List(meta_list) => {
+                    let path_str = meta_list.path.to_token_stream().to_string();
+                    if path_str.contains("contractimpl")
+                        || path_str.contains("contracttype")
+                        || path_str.contains("stellar_contract")
+                    {
+                        return true;
+                    }
                 }
+                Meta::Path(path) => {
+                    let path_str = path.to_token_stream().to_string();
+                    if path_str.contains("contractimpl")
+                        || path_str.contains("contracttype")
+                        || path_str.contains("stellar_contract")
+                    {
+                        return true;
+                    }
+                }
+                _ => {}
             }
         }
 
-        // Check for common Soroban trait implementations
-        // This is a heuristic - in practice, we'd need to check if the struct
-        // implements Soroban contract traits
         false
     }
 
