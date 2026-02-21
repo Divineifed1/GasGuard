@@ -59,7 +59,7 @@
     "apps/**/*",
     "libs/**/*",
     "packages/**/*"
-  ],
+, "apps/api-service/src/transection/dto/.dto .ts"  ],
   "exclude": [
     "node_modules",
     "dist",
