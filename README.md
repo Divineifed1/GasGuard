@@ -39,13 +39,14 @@ As Web3 scales, transaction costs remain a significant barrier to entry.
 ```text
 GasGuard/
 ├── apps/
-│   └── api/           # Nest.js backend handling remote scan requests
+│   ├── api/               # Nest.js backend handling remote scan requests
+│   └── api-service/       # Enhanced API service with database and E2E testing
 ├── libs/
-│   └── engine/        # Core logic for parsing Rust, Solidity, and Vyper
+│   └── engine/            # Core logic for parsing Rust, Solidity, and Vyper
 ├── packages/
-│   └── rules/         # Library of optimization rules and logic
-├── .gitignore         # Optimized for Node.js and Rust
-└── LICENSE            # MIT Licensed
+│   └── rules/             # Library of optimization rules and logic
+├── .gitignore             # Optimized for Node.js and Rust
+└── LICENSE                # MIT Licensed
 ```
 
 ---
@@ -71,7 +72,7 @@ npm run start
 ```
 
 The API will be available at `http://localhost:3000`.
-=======
+
 ## 🔌 API Versioning
 
 The GasGuard API uses **NestJS built-in versioning** with URI-based versioning strategy. All endpoints require a version prefix.
@@ -122,3 +123,85 @@ app.enableVersioning({
 ```
 
 This ensures all API consumers explicitly specify the version, making the API future-proof for version migrations.
+
+## 🧪 End-to-End Testing
+
+GasGuard includes comprehensive end-to-end testing to ensure reliable gasless transaction flows across all services.
+
+### E2E Test Framework
+
+- **Framework:** Jest with Supertest for API testing
+- **Blockchain:** Hardhat local network for contract interactions
+- **Services:** Dockerized PostgreSQL, Redis, and mock RPC providers
+- **Coverage:** Full gasless transaction workflows and failure scenarios
+
+### Running E2E Tests
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start test environment
+docker-compose -f apps/api-service/docker-compose.e2e.yml up -d
+
+# Run E2E tests
+cd apps/api-service
+pnpm run test:e2e
+
+# Or run from root
+pnpm run test:e2e
+```
+
+### Test Structure
+
+```
+apps/api-service/test/
+├── e2e/                    # E2E test suites
+│   ├── basic-api.e2e-spec.ts
+│   ├── gasless-transaction.e2e-spec.ts
+│   ├── failure-scenarios.e2e-spec.ts
+│   └── contract-interaction.e2e-spec.ts
+├── utils/                  # Test utilities
+│   ├── test-helpers.ts
+│   └── blockchain-setup.ts
+└── fixtures/               # Test data fixtures
+```
+
+For detailed information, see:
+- [E2E Testing Documentation](./docs/E2E_TESTING.md)
+- [E2E Quick Start Guide](./docs/E2E_QUICKSTART.md)
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- Docker & Docker Compose
+- pnpm package manager
+- Rust toolchain (for core engine)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/GasGuard.git
+cd GasGuard
+
+# Install dependencies
+pnpm install
+
+# Run tests
+pnpm run test
+
+# Start the API
+cd apps/api
+npm run start:dev
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for more details.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
