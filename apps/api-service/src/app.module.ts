@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ReportsModule } from './reports/reports.module';
 import { OptimizationModule } from './optimization/optimization.module';
+import { GasEstimationModule } from './gas-estimation/gas-estimation.module';
 import databaseConfig from './config/database.config';
 
 @Module({
@@ -23,7 +24,8 @@ import databaseConfig from './config/database.config';
     RulesModule,
     AnalyticsModule,
     ReportsModule,
-    OptimizationModule
+    OptimizationModule,
+    GasEstimationModule
   ],
 })
 export class AppModule {}
