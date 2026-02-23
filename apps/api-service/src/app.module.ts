@@ -10,6 +10,8 @@ import { ReportsModule } from './reports/reports.module';
 import { OptimizationModule } from './optimization/optimization.module';
 import { GasEstimationModule } from './gas-estimation/gas-estimation.module';
 import { ChainReliabilityModule } from './chain-reliability/chain-reliability.module';
+import { PerformanceMonitoringModule } from './performance-monitoring/performance-monitoring.module';
+import { GasSubsidyModule } from './gas-subsidy/gas-subsidy.module';
 import databaseConfig from './config/database.config';
 
 @Module({
@@ -27,7 +29,9 @@ import databaseConfig from './config/database.config';
     ReportsModule,
     OptimizationModule,
     GasEstimationModule,
-    ChainReliabilityModule
+    ChainReliabilityModule,
+    PerformanceMonitoringModule,
+    GasSubsidyModule,
   ],
 })
 export class AppModule {}

@@ -8,6 +8,8 @@ import {
   AnalysisResult 
 } from './entities';
 import { ChainPerformanceMetric } from '../chain-reliability/entities/chain-performance-metric.entity';
+import { ApiPerformanceMetric, ApiPerformanceAggregate } from '../performance-monitoring/entities/api-performance-metric.entity';
+import { GasSubsidyCap, GasSubsidyUsageLog, GasSubsidyAlert, SuspiciousUsageFlag } from '../gas-subsidy/entities/gas-subsidy.entity';
 
 @Module({
   imports: [
@@ -20,15 +22,39 @@ import { ChainPerformanceMetric } from '../chain-reliability/entities/chain-perf
         username: configService.get('DATABASE_USERNAME', 'postgres'),
         password: configService.get('DATABASE_PASSWORD', 'postgres'),
         database: configService.get('DATABASE_NAME', 'gasguard'),
-        entities: [Transaction, Merchant, Chain, AnalysisResult, ChainPerformanceMetric],
-        synchronize: configService.get('DATABASE_SYNCHRONIZE', false), // Should be false in production
+        entities: [
+          Transaction, 
+          Merchant, 
+          Chain, 
+          AnalysisResult, 
+          ChainPerformanceMetric,
+          ApiPerformanceMetric,
+          ApiPerformanceAggregate,
+          GasSubsidyCap,
+          GasSubsidyUsageLog,
+          GasSubsidyAlert,
+          SuspiciousUsageFlag,
+        ],
+        synchronize: configService.get('DATABASE_SYNCHRONIZE', false),
         logging: configService.get('DATABASE_LOGGING', false),
-        maxQueryExecutionTime: 1000, // Log queries taking longer than 1 second
-        ssl: configService.get('DATABASE_SSL', false),
+        maxQueryExecutionTime: 1000,
+        ssl: configService.get('DATABASE_SYNCHRONIZE', false),
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Transaction, Merchant, Chain, AnalysisResult, ChainPerformanceMetric]),
+    TypeOrmModule.forFeature([
+      Transaction, 
+      Merchant, 
+      Chain, 
+      AnalysisResult, 
+      ChainPerformanceMetric,
+      ApiPerformanceMetric,
+      ApiPerformanceAggregate,
+      GasSubsidyCap,
+      GasSubsidyUsageLog,
+      GasSubsidyAlert,
+      SuspiciousUsageFlag,
+    ]),
   ],
   exports: [TypeOrmModule],
 })
