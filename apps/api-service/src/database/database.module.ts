@@ -12,6 +12,11 @@ import { ChainPerformanceMetric } from '../chain-reliability/entities/chain-perf
 import { ApiPerformanceMetric, ApiPerformanceAggregate } from '../performance-monitoring/entities/api-performance-metric.entity';
 import { GasSubsidyCap, GasSubsidyUsageLog, GasSubsidyAlert, SuspiciousUsageFlag } from '../gas-subsidy/entities/gas-subsidy.entity';
 import { AuditLog, ApiKey } from '../audit/entities';
+import {
+  SuspiciousGasPattern,
+  GasPatternDetectionLog,
+} from '../analytics/entities/suspicious-gas-pattern.entity';
+import { GasBaseline } from '../analytics/entities/gas-baseline.entity';
 
 @Module({
   imports: [
@@ -39,6 +44,9 @@ import { AuditLog, ApiKey } from '../audit/entities';
           SuspiciousUsageFlag,
           AuditLog,
           ApiKey,
+          SuspiciousGasPattern,
+          GasPatternDetectionLog,
+          GasBaseline,
         ],
         synchronize: configService.get('DATABASE_SYNCHRONIZE', false),
         logging: configService.get('DATABASE_LOGGING', false),
@@ -62,6 +70,9 @@ import { AuditLog, ApiKey } from '../audit/entities';
       SuspiciousUsageFlag,
       AuditLog,
       ApiKey,
+      SuspiciousGasPattern,
+      GasPatternDetectionLog,
+      GasBaseline,
     ]),
   ],
   exports: [TypeOrmModule],
