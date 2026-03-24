@@ -72,19 +72,14 @@ export class SolidityAnalyzer extends BaseAnalyzer implements Analyzer {
       },
     },
     {
-      id: 'sol-005',
-      name: 'Public function that could be external',
-      description: 'Functions only called externally should use external visibility',
-      severity: Severity.MEDIUM,
-      category: 'gas-optimization',
+      id: 'sol-006',
+      name: 'Missing Reentrancy Guard',
+      description: 'Functions that transfer ETH or tokens should have reentrancy guards',
+      severity: Severity.CRITICAL,
+      category: 'security',
       enabled: true,
-      tags: ['visibility', 'gas'],
-      documentationUrl: 'https://docs.gasguard.dev/rules/sol-005',
-      estimatedGasImpact: {
-        min: 100,
-        max: 1000,
-        typical: 300,
-      },
+      tags: ['security', 'reentrancy', 'vulnerability'],
+      documentationUrl: 'https://docs.gasguard.dev/rules/sol-006',
     },
   ];
   
@@ -193,21 +188,21 @@ export class SolidityAnalyzer extends BaseAnalyzer implements Analyzer {
         })));
       }
       
-      // Rule: sol-002 - Storage when memory would suffice
-      if (this.isRuleEnabled('sol-002', config)) {
-        const unnecessaryStorage = this.detectUnnecessaryStorageUsage(code);
-        findings.push(...unnecessaryStorage.map(location => ({
-          ruleId: 'sol-002',
-          message: 'Variable uses storage but could use memory',
-          severity: this.getRuleSeverity('sol-002', config),
+      // Rule: sol-006 - Missing Reentrancy Guard
+      if (this.isRuleEnabled('sol-006', config)) {
+        const missingGuards = this.detectMissingReentrancyGuards(code);
+        findings.push(...missingGuards.map(location => ({
+          ruleId: 'sol-006',
+          message: 'Function transfers ETH/tokens but lacks reentrancy guard',
+          severity: this.getRuleSeverity('sol-006', config),
           location: {
             file: filePath,
             ...location,
           },
-          estimatedGasSavings: 5000,
           suggestedFix: {
-            description: 'Change storage variable to memory',
-            documentationUrl: 'https://docs.gasguard.dev/rules/sol-002',
+            description: 'Add reentrancy guard modifier to prevent reentrancy attacks',
+            codeSnippet: 'function withdraw() external nonReentrant { ... }',
+            documentationUrl: 'https://docs.gasguard.dev/rules/sol-006',
           },
         })));
       }
@@ -331,10 +326,10 @@ export class SolidityAnalyzer extends BaseAnalyzer implements Analyzer {
   private detectUnnecessaryStorageUsage(code: string): Array<{ startLine: number; endLine: number }> {
     const findings: Array<{ startLine: number; endLine: number }> = [];
     const lines = code.split('\n');
-    
+
     // Detect storage variables in function parameters or local variables
     const storagePattern = /\b(string|bytes|uint\[\]|address\[\])\s+storage\s+\w+/;
-    
+
     lines.forEach((line, index) => {
       if (storagePattern.test(line) && !line.includes('function')) {
         findings.push({
@@ -343,7 +338,82 @@ export class SolidityAnalyzer extends BaseAnalyzer implements Analyzer {
         });
       }
     });
-    
+
+    return findings;
+  }
+
+  private detectMissingReentrancyGuards(code: string): Array<{ startLine: number; endLine: number }> {
+    const findings: Array<{ startLine: number; endLine: number }> = [];
+    const lines = code.split('\n');
+
+    // Pattern to detect functions that transfer ETH or tokens
+    const transferPatterns = [
+      /\.transfer\s*\(/,
+      /\.send\s*\(/,
+      /\.call\s*\{.*value.*\}/,
+      /address\s*\(\s*\w+\s*\)\.call\s*\{.*value.*\}/,
+      /payable\s*\(\s*\w+\s*\)\.transfer\s*\(/,
+      /payable\s*\(\s*\w+\s*\)\.send\s*\(/,
+    ];
+
+    // Pattern to detect reentrancy guard modifiers
+    const guardPatterns = [
+      /\bnonReentrant\b/,
+      /\bnoReentrancy\b/,
+      /\breentrancyGuard\b/,
+      /\block\b/,
+    ];
+
+    // Find all function definitions
+    const functionPattern = /^\s*function\s+(\w+)\s*\([^}]*\)\s*(\w+)?\s*(\w+)?\s*\{/;
+
+    lines.forEach((line, index) => {
+      const functionMatch = line.match(functionPattern);
+      if (functionMatch) {
+        const functionName = functionMatch[1];
+        const functionStartLine = index + 1;
+
+        // Check if function has reentrancy guard
+        let hasGuard = false;
+        for (let i = Math.max(0, index - 5); i <= Math.min(lines.length - 1, index + 5); i++) {
+          const checkLine = lines[i];
+          if (guardPatterns.some(pattern => pattern.test(checkLine))) {
+            hasGuard = true;
+            break;
+          }
+        }
+
+        // If no guard, check if function transfers ETH/tokens
+        if (!hasGuard) {
+          // Look for transfer patterns in the function body
+          let braceCount = 0;
+          let inFunction = false;
+
+          for (let i = index; i < lines.length; i++) {
+            const currentLine = lines[i];
+            braceCount += (currentLine.match(/\{/g) || []).length;
+            braceCount -= (currentLine.match(/\}/g) || []).length;
+
+            if (braceCount === 1 && !inFunction) {
+              inFunction = true;
+            }
+
+            if (inFunction && transferPatterns.some(pattern => pattern.test(currentLine))) {
+              findings.push({
+                startLine: functionStartLine,
+                endLine: functionStartLine,
+              });
+              break;
+            }
+
+            if (braceCount === 0 && inFunction) {
+              break;
+            }
+          }
+        }
+      }
+    });
+
     return findings;
   }
 }
