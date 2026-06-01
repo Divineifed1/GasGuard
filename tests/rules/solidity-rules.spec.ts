@@ -168,7 +168,7 @@ contract TestContract {
     const allRuleIds = [
       'sol-003', 'sol-004', 'sol-005', 'sol-006', 'sol-007',
       'sol-008', 'sol-009', 'sol-010', 'sol-011', 'sol-012',
-      'sol-016'
+      'sol-015'
     ];
     const rules: any = {};
     for (const id of allRuleIds) {
@@ -177,40 +177,51 @@ contract TestContract {
     return { rules };
   }
 
-  describe('sol-016: Expensive Math Operations', () => {
-    it('should detect expensive exponentiation and modulo', async () => {
+  describe('sol-015: Dead Code Paths', () => {
+    it('should detect dead code after return/revert statements', async () => {
       const code = `
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract MathContract {
-    function compute() external pure {
-        uint256 r = 10 ** 2;
-        uint256 m = 100 % 7;
+contract TestContract {
+    function revertBefore() external {
+        revert("always revert");
+        uint256 x = 200;
+    }
+
+    function returnEarly() external {
+        return;
+        uint256 y = 300;
     }
 }
 `;
 
-      const result = await analyzer.analyze(code, 'test016.sol', isolateRule('sol-016'));
-      RuleAssertions.assertHasFinding(result.findings, 'sol-016');
-      const sol016Findings = result.findings.filter(f => f.ruleId === 'sol-016');
-      expect(sol016Findings.length).toBeGreaterThanOrEqual(2);
+      const result = await analyzer.analyze(code, 'test015.sol', isolateRule('sol-015'));
+      
+      RuleAssertions.assertHasFinding(result.findings, 'sol-015');
+      const sol015Findings = result.findings.filter(f => f.ruleId === 'sol-015');
+      expect(sol015Findings.length).toBe(2);
     });
 
-    it('should NOT flag simple math operations', async () => {
+    it('should NOT flag clean code without dead paths', async () => {
       const code = `
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract SimpleMath {
-    function add(uint256 a, uint256 b) external pure returns (uint256) {
-        return a + b;
+contract CleanContract {
+    function setValue(uint256 newValue) external {
+        // no dead code
+    }
+
+    function getValue() external view returns (uint256) {
+        return 42;
     }
 }
 `;
 
-      const result = await analyzer.analyze(code, 'simple.sol', isolateRule('sol-016'));
-      RuleAssertions.assertNotHasFinding(result.findings, 'sol-016');
+      const result = await analyzer.analyze(code, 'clean.sol', isolateRule('sol-015'));
+      
+      RuleAssertions.assertNotHasFinding(result.findings, 'sol-015');
     });
   });
 

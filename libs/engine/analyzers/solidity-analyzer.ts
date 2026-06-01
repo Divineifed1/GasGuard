@@ -153,19 +153,14 @@ export class SolidityAnalyzer extends BaseAnalyzer implements Analyzer {
       documentationUrl: 'https://docs.gasguard.dev/rules/sol-012',
     },
     {
-      id: 'sol-016',
-      name: 'Expensive Math Operations',
-      description: 'Detects costly arithmetic operations like exponentiation and modulo that can be optimized',
+      id: 'sol-015',
+      name: 'Dead Code Paths',
+      description: 'Identifies unreachable code paths that increase maintenance complexity and may indicate logic errors',
       severity: Severity.MEDIUM,
-      category: 'gas-optimization',
+      category: 'maintainability',
       enabled: true,
-      tags: ['math', 'gas', 'optimization'],
-      documentationUrl: 'https://docs.gasguard.dev/rules/sol-016',
-      estimatedGasImpact: {
-        min: 100,
-        max: 5000,
-        typical: 500,
-      },
+      tags: ['dead-code', 'maintainability', 'unreachable'],
+      documentationUrl: 'https://docs.gasguard.dev/rules/sol-015',
     },
   ];
   
@@ -414,23 +409,21 @@ export class SolidityAnalyzer extends BaseAnalyzer implements Analyzer {
         })));
       }
       
-      // Rule: sol-016 - Expensive Math Operations
-      if (this.isRuleEnabled('sol-016', config)) {
-        const expensiveMath = this.detectExpensiveMathOperations(code);
-        findings.push(...expensiveMath.map(location => ({
-          ruleId: 'sol-016',
+      // Rule: sol-015 - Dead Code Paths
+      if (this.isRuleEnabled('sol-015', config)) {
+        const deadCodePaths = this.detectDeadCodePaths(code);
+        findings.push(...deadCodePaths.map(location => ({
+          ruleId: 'sol-015',
           message: location.message,
-          severity: this.getRuleSeverity('sol-016', config),
+          severity: this.getRuleSeverity('sol-015', config),
           location: {
             file: filePath,
             startLine: location.startLine,
             endLine: location.endLine,
           },
-          estimatedGasSavings: location.estimatedGasSavings,
           suggestedFix: {
             description: location.suggestedFix,
-            codeSnippet: location.codeSnippet,
-            documentationUrl: 'https://docs.gasguard.dev/rules/sol-016',
+            documentationUrl: 'https://docs.gasguard.dev/rules/sol-015',
           },
         })));
       }
@@ -1239,56 +1232,67 @@ export class SolidityAnalyzer extends BaseAnalyzer implements Analyzer {
   }
 
   /**
-   * Detects expensive math operations (sol-016):
-   * Flags exponentiation and modulo operations that are gas-heavy
+   * Detects dead code paths (sol-015):
+   * Identifies unreachable code after unconditional exit statements
    */
-  private detectExpensiveMathOperations(code: string): Array<{
-    startLine: number;
-    endLine: number;
-    message: string;
-    estimatedGasSavings: number;
-    suggestedFix: string;
-    codeSnippet?: string;
-  }> {
-    const findings: Array<{
-      startLine: number;
-      endLine: number;
-      message: string;
-      estimatedGasSavings: number;
-      suggestedFix: string;
-      codeSnippet?: string;
-    }> = [];
+  private detectDeadCodePaths(code: string): Array<{ startLine: number; endLine: number; message: string; suggestedFix: string }> {
+    const findings: Array<{ startLine: number; endLine: number; message: string; suggestedFix: string }> = [];
     const lines = code.split('\n');
     
-    lines.forEach((line, index) => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return;
+    const functionPattern = /^\s*function\s+(\w+)\s*\(/;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const funcMatch = lines[i].match(functionPattern);
+      if (!funcMatch) continue;
       
-      // Exponentiation
-      const expMatch = line.match(/\b(\w+)\s*\*\*\s*(\w+)\b/);
-      if (expMatch && !expMatch[0].includes('*=') && expMatch[1] !== '**' && expMatch[2] !== '**') {
-        const leftIsNum = /^\d+$/.test(expMatch[1]);
-        const rightIsNum = /^\d+$/.test(expMatch[2]);
-        if (leftIsNum && rightIsNum) {
-          const base = parseInt(expMatch[1]);
-          const exp = parseInt(expMatch[2]);
-          const isPowerOfTwo = (base !== 0) && ((base & (base - 1)) === 0);
-          if (isPowerOfTwo && exp <= 256) {
-            findings.push({ startLine: index + 1, endLine: index + 1, message: `Expensive exponentiation detected: use bit shifting for powers of 2`, estimatedGasSavings: 200, suggestedFix: `Replace ${expMatch[0]} with bit shift`, codeSnippet: `// Instead of ${expMatch[0]}, use: 1 << ${Math.log2(base) * exp}` });
-          } else {
-            findings.push({ startLine: index + 1, endLine: index + 1, message: `Expensive exponentiation detected: ${expMatch[0]}. Exponentiation is very gas-heavy on-chain.`, estimatedGasSavings: 500, suggestedFix: `Consider precomputing values off-chain or using a lookup table`, codeSnippet: `// Off-chain computation or lookup table recommended for: ${expMatch[0]}` });
-          }
-        } else {
-          findings.push({ startLine: index + 1, endLine: index + 1, message: `Expensive exponentiation detected: ${expMatch[0]}. Exponentiation is very gas-heavy on-chain.`, estimatedGasSavings: 500, suggestedFix: `Consider precomputing values off-chain or using a lookup table`, codeSnippet: `// Off-chain computation or lookup table recommended for: ${expMatch[0]}` });
+      const functionName = funcMatch[1];
+      let braceDepth = 0;
+      let bodyStarted = false;
+      const bodyLines: Array<{ line: string; num: number; depth: number }> = [];
+      
+      for (let j = i; j < lines.length; j++) {
+        const cl = lines[j];
+        const opens = (cl.match(/\{/g) || []).length;
+        const closes = (cl.match(/\}/g) || []).length;
+        if (opens > 0) bodyStarted = true;
+        braceDepth += opens - closes;
+        if (bodyStarted) bodyLines.push({ line: cl, num: j + 1, depth: braceDepth });
+        if (bodyStarted && braceDepth === 0) break;
+      }
+      
+      let exitFoundAtLine = -1;
+      let exitDepth = -1;
+      
+      for (const bl of bodyLines) {
+        const trimmed = bl.line.trim();
+        if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed === '{' || trimmed === '}') continue;
+        
+        const isUnconditionalExit =
+          /^\s*return\b(?!s)/.test(bl.line) ||
+          /^\s*revert\b/.test(bl.line) ||
+          /^\s*selfdestruct\s*\(/.test(bl.line);
+        
+        if (isUnconditionalExit && bl.depth === 1) {
+          exitFoundAtLine = bl.num;
+          exitDepth = bl.depth;
         }
       }
       
-      // Modulo
-      const modMatch = line.match(/\b\w+\s*%\s*\w+/);
-      if (modMatch && !modMatch[0].includes('%=')) {
-        findings.push({ startLine: index + 1, endLine: index + 1, message: `Expensive modulo operation detected. Modulo is gas-heavy; consider using a different approach if used frequently.`, estimatedGasSavings: 50, suggestedFix: `If modulo by a power of 2, use bitwise AND instead. Otherwise, minimize modulo usage.` });
+      if (exitFoundAtLine > 0) {
+        for (const bl of bodyLines) {
+          const trimmed = bl.line.trim();
+          if (bl.num > exitFoundAtLine && bl.depth <= exitDepth && !trimmed.startsWith('//') && !trimmed.startsWith('*') && trimmed !== '' && trimmed !== '{' && trimmed !== '}') {
+            findings.push({
+              startLine: exitFoundAtLine,
+              endLine: bl.num,
+              message: `Unreachable code detected in function '${functionName}' after unconditional exit at line ${exitFoundAtLine}`,
+              suggestedFix: `Remove unreachable code after return/revert statement at line ${exitFoundAtLine}`,
+            });
+            break;
+          }
+        }
       }
-    });
+    }
     return findings;
   }
 }
