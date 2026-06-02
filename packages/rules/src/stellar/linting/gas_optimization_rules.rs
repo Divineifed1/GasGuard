@@ -87,7 +87,7 @@ impl SorobanLintRule for MapIterationRule {
             if (line.contains("for ") || line.contains("while ")) &&
                (line.contains(".iter()") || line.contains(".keys(") || line.contains(".values(") || line.contains(".entries(") || line.contains(".range(")) {
                 let window = lines.iter().skip(i.saturating_sub(8)).take(20).collect::<Vec<_>>().join("\n");
-                if window.contains("Map<") || window.contains("Map::") || window.contains(".iter()") {
+                if window.contains("Map<") || window.contains("Map::") || window.contains(": Map") {
                     violations.push(RuleViolation {
                         rule_name: self.id().to_string(),
                         description: "Detected potentially expensive iteration over a Soroban Map".to_string(),
